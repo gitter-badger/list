@@ -21,21 +21,13 @@
   },
   "repositories":[
     {
-      "type": "package",
-      "package": {
-        "name": "bpteam/File",
-        "version": "master",
-        "source": {
-          "url": "https://github.com/bpteam/file",
-          "type": "git",
-          "reference": "origin/master"
-        }
-      }
+      "type": "vcs",
+      "url": "https://github.com/bpteam/file"
     }
   ],
   "autoload" : {
     "psr-4": {
-      "bpteam\\BigList\\": "src/BigList"
+      "bpteam\\BigList\\": ""
     }
   }
 }
