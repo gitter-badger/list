@@ -27,7 +27,7 @@ class SQLiteList extends ArrayList implements iList
     /**
      * @param mixed $handle
      */
-    public function setHandle($handle)
+    protected function setHandle($handle)
     {
         $this->handle = $handle;
     }
@@ -80,7 +80,7 @@ class SQLiteList extends ArrayList implements iList
         $stmt = $this->handle->prepare("SELECT * FROM {$this->table} WHERE parent_row = :pr");
         $stmt->bindValue(':pr', $level, SQLITE3_TEXT);
         $result = $stmt->execute();
-        while ($data = $result->fetchArray()) {
+        while ($data = $result->fetchArray(SQLITE3_ASSOC)) {
             $this->delete($data['key_row']);
         }
         $result->finalize();
@@ -92,52 +92,61 @@ class SQLiteList extends ArrayList implements iList
     }
 
     /**
-     * @param string     $level
-     * @param bool|false $levelData
-     * @return null|array
+     * @param string            $level
+     * @param bool|string $levelData
+     * @return array|NULL
      */
     public function &find($level, &$levelData = false)
     {
-        $stmt = $this->handle->prepare("SELECT COUNT(*) AS 'total', key_row, parent_row, value_row FROM {$this->table} WHERE key_row = :kr");
-        $stmt->bindValue(':kr', $level, SQLITE3_TEXT);
-        $result = $stmt->execute();
-        $hasChildren = $this->hasChildren($level);
-        $list = [];
-        while (($data = $result->fetchArray()) && $data['total']) {
-            if ($data['total'] === 1 && !$hasChildren) {
-                $list = $data['value_row'];
-            } else {
-                $list[] = $data['value_row'];
-            }
+        if ($levelData) {
+            $stmt = $this->handle->prepare("SELECT * FROM {$this->table} WHERE key_row = :kr AND parent_row = :pr");
+            $stmt->bindValue(':kr', $level, SQLITE3_TEXT);
+            $stmt->bindValue(':pr', $levelData, SQLITE3_TEXT);
+        } else {
+            $stmt = $this->handle->prepare("SELECT * FROM {$this->table} WHERE key_row = :kr");
+            $stmt->bindValue(':kr', $level, SQLITE3_TEXT);
         }
-        if ($hasChildren) {
-            $keyStmt = $this->handle->prepare("SELECT key_row FROM {$this->table} WHERE parent_row = :pr");
-            $keyStmt->bindValue(':pr', $level, SQLITE3_TEXT);
-            $keyResult = $keyStmt->execute();
-            while ($data = $keyResult->fetchArray()) {
-                $children = $this->find($data['key_row']);
-                if (is_array($children)) {
-                    $list = $list + $children;
-                } else {
-                    $list[] = $children;
-                }
-            }
-            $keyResult->finalize();
-            $keyStmt->close();
+        $result = $stmt->execute();
+        while (($data = $result->fetchArray(SQLITE3_ASSOC)) && $data['value_row'] !== NULL) {
+            return $data['value_row'];
+        }
+        if ($this->hasChildren($level)) {
+            $list = $this->getChildren($level);
         }
         $result->finalize();
         $stmt->close();
         if (isset($list)) {
             return $list;
         } else {
-            $null = null;
+            $null = NULL;
             return $null;
         }
     }
 
-    public function write($value, $key = null, $level = self::ROOT)
+    protected function getChildren($level)
     {
-        if ($key === null) {
+        $keyStmt = $this->handle->prepare("SELECT key_row FROM {$this->table} WHERE parent_row = :pr");
+        $keyStmt->bindValue(':pr', $level, SQLITE3_TEXT);
+        $keyResult = $keyStmt->execute();
+        $data = $keyResult->fetchArray(SQLITE3_ASSOC);
+        $list = [];
+        do {
+            $children[$data['key_row']] = $this->find($data['key_row'], $level);
+            if (is_array($children)) {
+                $list = $list + $children;
+            } else {
+                $list[$data['key_row']] = $children;
+            }
+            $data = $keyResult->fetchArray(SQLITE3_ASSOC);
+        } while ($data);
+        $keyResult->finalize();
+        $keyStmt->close();
+        return $list;
+    }
+
+    public function write($value, $key = NULL, $level = self::ROOT)
+    {
+        if ($key === NULL) {
             $list = $this->find($level);
             if (is_array($list)) {
                 array_push($list, $value);
@@ -149,11 +158,12 @@ class SQLiteList extends ArrayList implements iList
 
         }
         if (is_array($value)) {
+            $this->addLevel($key, $level);
             foreach ($value as $keyValue => $valueValue) {
                 $this->write($valueValue, $keyValue, $key);
             }
         } else {
-            $stmt = $this->handle->prepare("INSERT INTO {$this->table} VALUES (:kr, :pr, :vr)");
+            $stmt = $this->handle->prepare("INSERT OR REPLACE INTO {$this->table} VALUES (:kr, :pr, :vr)");
             $stmt->bindValue(':pr', $level, SQLITE3_TEXT);
             $stmt->bindValue(':kr', $key, SQLITE3_TEXT);
             $stmt->bindValue(':vr', $value, SQLITE3_TEXT);
@@ -162,9 +172,19 @@ class SQLiteList extends ArrayList implements iList
         }
     }
 
-    public function read($level = self::ROOT)
+    protected function addLevel($level, $parent = self::ROOT)
     {
-        return $this->find($level);
+
+        $stmt = $this->handle->prepare("SELECT COUNT(*) AS 'total' FROM {$this->table} WHERE key_row = :kr AND parent_row = :pr");
+        $stmt->bindValue(':pr', $parent, SQLITE3_TEXT);
+        $stmt->bindValue(':kr', $level, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $count = $result->fetchArray(SQLITE3_ASSOC);
+        $result->finalize();
+        $stmt->close();
+        if (!$count['total']) {
+            $this->write(NULL, $level, $parent);
+        }
     }
 
     protected function hasChildren($level = self::ROOT)
@@ -172,7 +192,7 @@ class SQLiteList extends ArrayList implements iList
         $stmt = $this->handle->prepare("SELECT COUNT(*) AS 'total' FROM {$this->table} WHERE parent_row = :pr");
         $stmt->bindValue(':pr', $level, SQLITE3_TEXT);
         $result = $stmt->execute();
-        $count = $result->fetchArray();
+        $count = $result->fetchArray(SQLITE3_ASSOC);
         $result->finalize();
         $stmt->close();
         return $count['total'];

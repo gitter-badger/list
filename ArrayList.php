@@ -84,8 +84,8 @@ abstract class ArrayList implements iList
         }
     }
 
-    public function read($level = '/')
+    public function read($level = self::ROOT)
     {
-
+        return $this->find($level);
     }
 }

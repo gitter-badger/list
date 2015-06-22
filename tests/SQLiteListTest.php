@@ -84,6 +84,17 @@ class SQLiteListTest extends PHPUnit_Framework_TestCase
         $list->write('asdf', 'test2', 'lvl');
         $test2 = $list->read('test2');
         $this->assertEquals('asdf', $test2);
+        $root = $list->read(SQLiteList::ROOT);
+        $this->assertArrayHasKey(0, $root);
+        $this->assertArrayHasKey('msg', $root[0]);
+        $this->assertEquals('hello', $root[0]['msg']);
+        $this->assertArrayHasKey('demo', $root);
+        $this->assertEquals('test', $root['demo']);
+        $this->assertArrayHasKey('test', $root);
+        $this->assertArrayHasKey('lvl', $root['test']);
+        $this->assertArrayHasKey(0, $root['test']['lvl']);
+        $this->assertEquals('ku', $root['test']['lvl'][0]);
+        $this->assertEquals('asdf', $root['test']['lvl']['test2']);
         $list->close();
     }
     public function testDelete()
@@ -95,6 +106,6 @@ class SQLiteListTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('test3', $testVal);
         $list->delete('delete_me');
         $testVal = $list->read('delete_me');
-        $this->assertFalse((bool)$testVal);
+        $this->assertNull($testVal);
     }
 }
