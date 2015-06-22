@@ -35,8 +35,8 @@ abstract class ArrayList implements iList
     {
         $this->close();
     }
-    public abstract function open($name);
-    public abstract function close();
+    abstract public function open($name);
+    abstract public function close();
     public function deleteList()
     {
         unset($this->list[self::ROOT]);
